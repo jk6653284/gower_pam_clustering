@@ -1,0 +1,289 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file).
+
+
+```{r}
+set.seed(1680)
+
+library(dplyr)
+library(ISLR)
+library(cluster)
+library(Rtsne)
+library(ggplot2)
+```
+
+
+
+```{r}
+getwd()
+list.files()
+
+rt <- read.csv("raw_trips_prepared_python.csv")
+rc <- read.csv("raw_trips_transform_3.csv")
+```
+
+
+```{r}
+# look at structure
+str(rc)
+
+# head
+head(rc)
+```
+
+```{r}
+# set seed
+set.seed(1200)
+
+```
+
+
+```{r}
+# clean data
+rc$seats <- factor(rc$seats)
+rc$dep_month <- factor(rc$dep_month)
+rc$dep_dow <- factor(rc$dep_dow)
+rc$children <- ifelse(rc$children == 0, 'False', 'True')
+rc$children <- factor(rc$children)
+rc$car <- ifelse(rc$car == 0, 'False', 'True')
+rc$car <- factor(rc$car)
+rc$hotel <- ifelse(rc$hotel == 0, 'False', 'True')
+rc$hotel <- factor(rc$hotel)
+rc$insurance <- ifelse(rc$insurance == 0, 'False', 'True')
+rc$insurance <- factor(rc$insurance)
+
+```
+
+```{r}
+head(rc)
+```
+
+```{r}
+rc_vars <- rc %>%
+  select(id, weekend_trip, Z_age, travel_companion)
+```
+
+
+# calculate distance
+Defining (dis)similarity between observations
+Euclidean is only for continuous variables, and is not applicable for mixed variables.
+Gower distance can handle mixed data types.
+Gower distance: for each var type, a particular metric that works well for that type is used and scaled to fall between 0 and 1 (e.x. - Manhattan for quantiative intervals, rank & manhattan for ordinal, dice coefficietn for nominal a.k.a., categorical vars)
+
+
+```{r}
+gower_dist_rc <- daisy(rc_vars[,-1],
+                       metric = "gower")
+
+summary(gower_dist_rc)
+```
+
+```{r}
+gower_mat_rc <- as.matrix(gower_dist_rc)
+```
+
+```{r}
+# find best number of k clusters
+sil_width_rc <- c(NA)
+for(i in 2:5) {
+  pam_fit <- pam(gower_mat_rc,
+                 diss = T,
+                 k = i)
+  sil_width_rc[i] <- pam_fit$silinfo$avg.width
+}
+
+# plot silhouette
+qplot(x = c(1:5), y = sil_width_rc, geom = "point")
+```
+
+
+
+```{r}
+pam_fit_rc <- pam(gower_dist_rc, diss = T,
+                  k = 4)
+
+pam_results_rc <- rc_vars %>%
+  select(-id) %>%
+  mutate(cluster = pam_fit_rc$clustering) %>%
+  group_by(cluster) %>%
+  do(the_summary = summary(.))
+
+pam_results_rc$the_summary
+```
+
+
+```{r}
+tsne_obj_rc <- Rtsne(gower_dist_rc, is_distance = T)
+
+tsne_data_rc <- tsne_obj_rc$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(pam_fit_rc$clustering),
+         name = rc_vars$id)
+
+ggplot(aes(x = X, y = Y), data = tsne_data_rc) +
+  geom_point(aes(color = cluster))
+```
+
+
+
+
+```{r}
+clu <- tsne_data_rc[,'cluster']
+```
+
+
+
+```{r}
+rc <- rc %>%
+  mutate(cluster = clu)
+```
+
+```{r}
+head(rc)
+names(rc)
+```
+
+```{r}
+ggplot(rc) + 
+  geom_bar(aes(cluster, y = ..count../sum(..count..),
+               fill = travel_companion), position = 'dodge')
+```
+
+```{r}
+ggplot(rc,aes(cluster, age)) +
+  geom_boxplot() +
+  stat_summary(fun.y = mean, geom = 'point', color = I('red'))
+```
+
+
+```{r}
+ggplot(rc) + 
+  geom_bar(aes(cluster, fill = long_holiday), position = 'dodge')
+```
+
+
+```{r}
+ggplot(rc) +
+  geom_boxplot(aes(cluster, Z_duration))
+```
+
+```{r}
+
+  ggplot(rc) + 
+  geom_bar(aes(cluster, fill = weekend_trip), position = 'dodge')
+```
+
+
+```{r}
+ggplot(rc) +
+  geom_bar(aes(cluster, fill = gender), position = 'dodge')
+```
+
+```{r}
+ggplot(rc) +
+  geom_bar(aes(cluster, fill = children), position = 'dodge')
+```
+
+```{r}
+ggplot(rc) +
+  geom_freqpoly(aes(purchase_lag,..density.., color = cluster)) +
+  geom_freqpoly(aes(purchase_lag, ..density..))
+
+ggplot(rc, aes(x = cluster, y =purchase_lag)) +
+  geom_boxplot() +
+  stat_summary(fun.y = mean, color = I('red'), geom = 'point')
+```
+
+
+
+```{r}
+ggplot(rc) +
+  geom_bar(aes(cluster, fill = customer_type), position = 'dodge')
+```
+
+```{r}
+ggplot(rc) +
+  geom_bar(aes(x = cluster, fill = car), position = 'dodge')
+```
+
+```{r}
+ggplot(rc) +
+  geom_bar(aes(x = cluster, fill = hotel), position = 'dodge')
+```
+
+```{r}
+ggplot(rc) +
+  geom_bar(aes(x = cluster, fill = insurance), position = 'dodge')
+```
+
+```{r}
+grid.arrange(
+rc %>%
+  filter(cluster == 1) %>%
+  ggplot() +
+  geom_bar(aes(x = dep_month, y= ..count../sum(..count..))),
+
+rc %>%
+  filter(cluster == 1) %>%
+  ggplot() +
+  geom_bar(aes(x = dep_dow, y= ..count../sum(..count..))),
+ncol = 2)
+```
+
+```{r}
+grid.arrange(
+rc %>%
+  filter(cluster == 2) %>%
+  ggplot() +
+  geom_bar(aes(x = dep_month, y= ..count../sum(..count..))),
+
+rc %>%
+  filter(cluster == 2) %>%
+  ggplot() +
+  geom_bar(aes(x = dep_dow, y= ..count../sum(..count..))),
+ncol = 2)
+```
+
+```{r}
+grid.arrange(
+rc %>%
+  filter(cluster == 3) %>%
+  ggplot() +
+  geom_bar(aes(x = dep_month, y= ..count../sum(..count..))),
+
+rc %>%
+  filter(cluster == 3) %>%
+  ggplot() +
+  geom_bar(aes(x = dep_dow, y= ..count../sum(..count..))),
+ncol = 2)
+```
+
+```{r}
+grid.arrange(
+rc %>%
+  filter(cluster == 4) %>%
+  ggplot() +
+  geom_bar(aes(x = dep_month, y= ..count../sum(..count..))),
+
+rc %>%
+  filter(cluster == 4) %>%
+  ggplot() +
+  geom_bar(aes(x = dep_dow, y= ..count../sum(..count..))),
+ncol = 2)
+```
+
